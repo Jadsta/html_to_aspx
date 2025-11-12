@@ -59,6 +59,9 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
               regionName: 'us-east-1'
               scriptType: 'inline'
               inlineScript: |
+                set -e  # Exit immediately if any command fails
+                set -o pipefail  # Catch errors in piped commands
+                
                 echo "Initialising ETL Job Config - Scope: ${{ parameters.configScope }}"
                 
                 # Function to process a single dataset configuration
@@ -72,25 +75,23 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                     echo "Warning: SQL file $sql_file not found for dataset $dataset_name"
                     sql_content=""
                   else
-                    # Process SQL content - only basic cleanup, no escaping yet
-                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | tr -d '\r' | tr -s ' ')
-                    echo "SQL content loaded for dataset: $dataset_name"
-                  fi
-                  
-                  # Extract matching job configuration from JSON
-                  job_config=$(cat dataflow/graph/etlJobConfig/graph_etlJobConfig.json | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | contains($dataset))')
-                  
-                  if [ -z "$job_config" ]; then
-                    echo "No matching job configuration found for dataset: $dataset_name"
-                    return 1
-                  fi
-                  
-                  # Get jobKey for logging
-                  job_key=$(echo "$job_config" | jq -r '.jobKey')
-                  echo "Initialising config for jobKey: $job_key"
-                  
-                  # Add SQL content to the job config
-                  job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" '. + {sql: $sql}')
+                  # Process SQL content - only basic cleanup, no escaping yet
+                  sql_content=$(cat "$sql_file" | tr '\n' ' ' | tr -d '\r' | tr -s ' ')
+                  echo "SQL content loaded for dataset: $dataset_name"
+                fi
+                
+                # Extract matching job configuration from JSON - exact match on the last segment after the final dot
+                job_config=$(cat dataflow/graph/etlJobConfig/graph_etlJobConfig.json | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
+                
+                if [ -z "$job_config" ]; then
+                  echo "No matching job configuration found for dataset: $dataset_name"
+                  return 1
+                fi
+                
+                # Get jobKey for logging
+                job_key=$(echo "$job_config" | jq -r '.jobKey')
+                echo "Initialising config for jobKey: $job_key"                  # Add SQL content to the job config
+                  job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" '. + {tptSql: $sql}')
                   
                   # Override s3BucketName with pipeline variable if present
                   if echo "$job_config_with_sql" | jq -e '.s3BucketName' > /dev/null; then
@@ -165,6 +166,9 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
               regionName: 'us-east-1'
               scriptType: 'inline'
               inlineScript: |
+                set -e  # Exit immediately if any command fails
+                set -o pipefail  # Catch errors in piped commands
+                
                 echo "Updating ETL Job Config - Scope: ${{ parameters.configScope }}"
                 
                 # Function to update a single dataset configuration
@@ -178,25 +182,23 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                     echo "Warning: SQL file $sql_file not found for dataset $dataset_name"
                     sql_content=""
                   else
-                    # Process SQL content - only basic cleanup, no escaping yet
-                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | tr -d '\r' | tr -s ' ')
-                    echo "SQL content loaded for dataset: $dataset_name"
-                  fi
-                  
-                  # Extract matching job configuration from JSON
-                  job_config=$(cat dataflow/graph/etlJobConfig/graph_etlJobConfig.json | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | contains($dataset))')
-                  
-                  if [ -z "$job_config" ]; then
-                    echo "No matching job configuration found for dataset: $dataset_name"
-                    return 1
-                  fi
-                  
-                  # Get jobKey for logging
-                  job_key=$(echo "$job_config" | jq -r '.jobKey')
-                  echo "Updating config for jobKey: $job_key"
-                  
-                  # Add SQL content to the job config and remove protected fields
-                  job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" '. + {sql: $sql} | del(.fromDate, .lastRunTime, .jobStatus)')
+                  # Process SQL content - only basic cleanup, no escaping yet
+                  sql_content=$(cat "$sql_file" | tr '\n' ' ' | tr -d '\r' | tr -s ' ')
+                  echo "SQL content loaded for dataset: $dataset_name"
+                fi
+                
+                # Extract matching job configuration from JSON - exact match on the last segment after the final dot
+                job_config=$(cat dataflow/graph/etlJobConfig/graph_etlJobConfig.json | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
+                
+                if [ -z "$job_config" ]; then
+                  echo "No matching job configuration found for dataset: $dataset_name"
+                  return 1
+                fi
+                
+                # Get jobKey for logging
+                job_key=$(echo "$job_config" | jq -r '.jobKey')
+                echo "Updating config for jobKey: $job_key"                  # Add SQL content to the job config and remove protected fields
+                  job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" '. + {tptSql: $sql} | del(.fromDate, .lastRunTime, .jobStatus)')
                   
                   # Override s3BucketName with pipeline variable if present
                   if echo "$job_config_with_sql" | jq -e '.s3BucketName' > /dev/null; then
