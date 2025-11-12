@@ -72,7 +72,8 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                     echo "Warning: SQL file $sql_file not found for dataset $dataset_name"
                     sql_content=""
                   else
-                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | sed 's/"/\\"/g')
+                    # Process SQL content and escape special characters for JSON
+                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\//\\\//g' | sed 's/\*/\\*/g' | tr -d '\r' | tr -s ' ')
                     echo "SQL content loaded for dataset: $dataset_name"
                   fi
                   
@@ -177,7 +178,8 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                     echo "Warning: SQL file $sql_file not found for dataset $dataset_name"
                     sql_content=""
                   else
-                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | sed 's/"/\\"/g')
+                    # Process SQL content and escape special characters for JSON
+                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\//\\\//g' | sed 's/\*/\\*/g' | tr -d '\r' | tr -s ' ')
                     echo "SQL content loaded for dataset: $dataset_name"
                   fi
                   
