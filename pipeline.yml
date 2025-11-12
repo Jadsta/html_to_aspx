@@ -37,7 +37,13 @@ parameters:
       - dataset2
       - dataset3
 
-
+  - name: bucketName
+    ${{ if eq(parameters.awsenv, 'dev') }}:
+      value: 'graph-app-dev'
+    ${{ if eq(parameters.awsenv, 'qa') }}:
+      value: 'graph-app-qa'
+    ${{ if eq(parameters.awsenv, 'prod') }}:
+      value: 'graph-app-prod'
 
 ${{ if eq(parameters.action, 'InitialiseETLConfig') }}  
   - stage: InitialiseETLConfig
@@ -83,6 +89,12 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                   
                   # Add SQL content to the job config
                   job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" '. + {sql: $sql}')
+                  
+                  # Override s3BucketName with pipeline variable if present
+                  if echo "$job_config_with_sql" | jq -e '.s3BucketName' > /dev/null; then
+                    echo "Overriding s3BucketName with environment-specific bucket: ${{ parameters.bucketName }}"
+                    job_config_with_sql=$(echo "$job_config_with_sql" | jq --arg bucket "${{ parameters.bucketName }}" '.s3BucketName = $bucket')
+                  fi
                   
                   # Convert JSON to DynamoDB item format dynamically
                   dynamodb_item=$(echo "$job_config_with_sql" | jq -r '
@@ -167,6 +179,12 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                   
                   # Add SQL content to the job config and remove protected fields
                   job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" '. + {sql: $sql} | del(.fromDate, .lastRunTime, .jobStatus)')
+                  
+                  # Override s3BucketName with pipeline variable if present
+                  if echo "$job_config_with_sql" | jq -e '.s3BucketName' > /dev/null; then
+                    echo "Overriding s3BucketName with environment-specific bucket: ${{ parameters.bucketName }}"
+                    job_config_with_sql=$(echo "$job_config_with_sql" | jq --arg bucket "${{ parameters.bucketName }}" '.s3BucketName = $bucket')
+                  fi
                   
                   # Check if item exists
                   existing_item=$(aws dynamodb get-item \
