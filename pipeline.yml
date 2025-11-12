@@ -37,6 +37,7 @@ parameters:
       - dataset2
       - dataset3
 
+variables:
   - name: bucketName
     ${{ if eq(parameters.awsenv, 'dev') }}:
       value: 'graph-app-dev'
@@ -92,25 +93,40 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                   
                   # Override s3BucketName with pipeline variable if present
                   if echo "$job_config_with_sql" | jq -e '.s3BucketName' > /dev/null; then
-                    echo "Overriding s3BucketName with environment-specific bucket: ${{ parameters.bucketName }}"
-                    job_config_with_sql=$(echo "$job_config_with_sql" | jq --arg bucket "${{ parameters.bucketName }}" '.s3BucketName = $bucket')
+                    echo "Overriding s3BucketName with environment-specific bucket: ${{ variables.bucketName }}"
+                    job_config_with_sql=$(echo "$job_config_with_sql" | jq --arg bucket "${{ variables.bucketName }}" '.s3BucketName = $bucket')
                   fi
                   
                   # Convert JSON to DynamoDB item format dynamically
-                  dynamodb_item=$(echo "$job_config_with_sql" | jq -r '
-                    . as $obj | 
-                    reduce (keys[] as $key; {}; 
-                      . + {
-                        ($key): (
-                          if ($obj[$key] | type) == "number" then 
-                            {"N": ($obj[$key] | tostring)} 
-                          else 
-                            {"S": ($obj[$key] | tostring)} 
-                          end
-                        )
-                      }
-                    )
-                  ')
+                  # First, get all keys and build the item step by step
+                  dynamodb_item="{"
+                  first_item=true
+                  
+                  # Process each key-value pair
+                  keys=$(echo "$job_config_with_sql" | jq -r 'keys[]')
+                  for key in $keys; do
+                    value=$(echo "$job_config_with_sql" | jq -r ".$key")
+                    
+                    # Add comma separator for subsequent items
+                    if [ "$first_item" = true ]; then
+                      first_item=false
+                    else
+                      dynamodb_item="$dynamodb_item,"
+                    fi
+                    
+                    # Determine if value is numeric or string
+                    if echo "$value" | grep -E '^[0-9]+$' > /dev/null; then
+                      # Numeric value
+                      dynamodb_item="$dynamodb_item\"$key\":{\"N\":\"$value\"}"
+                    else
+                      # String value - escape quotes
+                      escaped_value=$(echo "$value" | sed 's/"/\\"/g')
+                      dynamodb_item="$dynamodb_item\"$key\":{\"S\":\"$escaped_value\"}"
+                    fi
+                  done
+                  dynamodb_item="$dynamodb_item}"
+                  
+                  echo "DynamoDB item prepared for jobKey: $job_key"
                   
                   # Insert/Overwrite the item in DynamoDB
                   aws dynamodb put-item \
@@ -182,8 +198,8 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                   
                   # Override s3BucketName with pipeline variable if present
                   if echo "$job_config_with_sql" | jq -e '.s3BucketName' > /dev/null; then
-                    echo "Overriding s3BucketName with environment-specific bucket: ${{ parameters.bucketName }}"
-                    job_config_with_sql=$(echo "$job_config_with_sql" | jq --arg bucket "${{ parameters.bucketName }}" '.s3BucketName = $bucket')
+                    echo "Overriding s3BucketName with environment-specific bucket: ${{ variables.bucketName }}"
+                    job_config_with_sql=$(echo "$job_config_with_sql" | jq --arg bucket "${{ variables.bucketName }}" '.s3BucketName = $bucket')
                   fi
                   
                   # Check if item exists
