@@ -72,8 +72,8 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                     echo "Warning: SQL file $sql_file not found for dataset $dataset_name"
                     sql_content=""
                   else
-                    # Process SQL content and escape special characters for JSON
-                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\//\\\//g' | sed 's/\*/\\*/g' | tr -d '\r' | tr -s ' ')
+                    # Process SQL content - only basic cleanup, no escaping yet
+                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | tr -d '\r' | tr -s ' ')
                     echo "SQL content loaded for dataset: $dataset_name"
                   fi
                   
@@ -120,8 +120,8 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                       # Numeric value
                       dynamodb_item="$dynamodb_item\"$key\":{\"N\":\"$value\"}"
                     else
-                      # String value - escape quotes
-                      escaped_value=$(echo "$value" | sed 's/"/\\"/g')
+                      # String value - escape all necessary characters for JSON
+                      escaped_value=$(echo "$value" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\//\\\//g')
                       dynamodb_item="$dynamodb_item\"$key\":{\"S\":\"$escaped_value\"}"
                     fi
                   done
@@ -178,8 +178,8 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                     echo "Warning: SQL file $sql_file not found for dataset $dataset_name"
                     sql_content=""
                   else
-                    # Process SQL content and escape special characters for JSON
-                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\//\\\//g' | sed 's/\*/\\*/g' | tr -d '\r' | tr -s ' ')
+                    # Process SQL content - only basic cleanup, no escaping yet
+                    sql_content=$(cat "$sql_file" | tr '\n' ' ' | tr -d '\r' | tr -s ' ')
                     echo "SQL content loaded for dataset: $dataset_name"
                   fi
                   
@@ -249,8 +249,8 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                           expression_attribute_values="$expression_attribute_values,\":$key\":{\"N\":\"$value\"}"
                         fi
                       else
-                        # String value
-                        escaped_value=$(echo "$value" | sed 's/"/\\"/g')
+                        # String value - escape all necessary characters for JSON
+                        escaped_value=$(echo "$value" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\//\\\//g')
                         if [ -z "$expression_attribute_values" ]; then
                           expression_attribute_values="\":$key\":{\"S\":\"$escaped_value\"}"
                         else
