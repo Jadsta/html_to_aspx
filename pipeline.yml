@@ -80,8 +80,23 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                   echo "SQL content loaded for dataset: $dataset_name"
                 fi
                 
-                # Extract matching job configuration from JSON - exact match on the last segment after the final dot
-                job_config=$(cat dataflow/graph/etlJobConfig/graph_etlJobConfig.json | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
+                # Determine collection from dataset by searching all config files
+                collection=""
+                for config_file in dataflow/graph/etlJobConfig/graph-ds*-etlJobConfig.json; do
+                  if cat "$config_file" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)' | grep -q .; then
+                    collection=$(basename "$config_file" | sed 's/graph-\(ds[0-9]*\)-etlJobConfig.json/\1/')
+                    echo "Found dataset in collection: $collection"
+                    break
+                  fi
+                done
+                
+                if [ -z "$collection" ]; then
+                  echo "Error: Could not find dataset $dataset_name in any collection config file"
+                  return 1
+                fi
+                
+                # Extract matching job configuration from collection-specific JSON
+                job_config=$(cat "dataflow/graph/etlJobConfig/graph-$collection-etlJobConfig.json" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
                 
                 if [ -z "$job_config" ]; then
                   echo "No matching job configuration found for dataset: $dataset_name"
@@ -141,8 +156,8 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                 # Process based on scope
                 if [ "${{ parameters.configScope }}" = "all" ]; then
                   echo "Processing all datasets..."
-                  # Extract all unique datasets from the JSON config
-                  datasets=$(cat dataflow/graph/etlJobConfig/graph_etlJobConfig.json | jq -r '.[].jobKey' | sed 's/.*\.//' | sort -u)
+                  # Extract all unique datasets from all collection config files
+                  datasets=$(cat dataflow/graph/etlJobConfig/graph-ds*-etlJobConfig.json | jq -r '.[].jobKey' | sed 's/.*\.//' | sort -u)
                   for dataset in $datasets; do
                     process_config "$dataset"
                   done
@@ -187,8 +202,23 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                   echo "SQL content loaded for dataset: $dataset_name"
                 fi
                 
-                # Extract matching job configuration from JSON - exact match on the last segment after the final dot
-                job_config=$(cat dataflow/graph/etlJobConfig/graph_etlJobConfig.json | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
+                # Determine collection from dataset by searching all config files
+                collection=""
+                for config_file in dataflow/graph/etlJobConfig/graph-ds*-etlJobConfig.json; do
+                  if cat "$config_file" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)' | grep -q .; then
+                    collection=$(basename "$config_file" | sed 's/graph-\(ds[0-9]*\)-etlJobConfig.json/\1/')
+                    echo "Found dataset in collection: $collection"
+                    break
+                  fi
+                done
+                
+                if [ -z "$collection" ]; then
+                  echo "Error: Could not find dataset $dataset_name in any collection config file"
+                  return 1
+                fi
+                
+                # Extract matching job configuration from collection-specific JSON
+                job_config=$(cat "dataflow/graph/etlJobConfig/graph-$collection-etlJobConfig.json" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
                 
                 if [ -z "$job_config" ]; then
                   echo "No matching job configuration found for dataset: $dataset_name"
@@ -276,8 +306,8 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                 # Process based on scope
                 if [ "${{ parameters.configScope }}" = "all" ]; then
                   echo "Processing all datasets..."
-                  # Extract all unique datasets from the JSON config
-                  datasets=$(cat dataflow/graph/etlJobConfig/graph_etlJobConfig.json | jq -r '.[].jobKey' | sed 's/.*\.//' | sort -u)
+                  # Extract all unique datasets from all collection config files
+                  datasets=$(cat dataflow/graph/etlJobConfig/graph-ds*-etlJobConfig.json | jq -r '.[].jobKey' | sed 's/.*\.//' | sort -u)
                   for dataset in $datasets; do
                     update_config "$dataset"
                   done
