@@ -157,7 +157,12 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
                 if [ "${{ parameters.configScope }}" = "all" ]; then
                   echo "Processing all datasets..."
                   # Extract all unique datasets from all collection config files
-                  datasets=$(cat dataflow/graph/etlJobConfig/graph-*-extract-config.json | jq -r '.[].jobKey' | sed 's/.*\.//' | sort -u)
+                  datasets=""
+                  for config_file in dataflow/graph/etlJobConfig/graph-*-extract-config.json; do
+                    file_datasets=$(cat "$config_file" | jq -r '.[].jobKey' | sed 's/.*\.//')
+                    datasets="$datasets $file_datasets"
+                  done
+                  datasets=$(echo "$datasets" | tr ' ' '\n' | sort -u)
                   for dataset in $datasets; do
                     process_config "$dataset"
                   done
@@ -307,7 +312,12 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
                 if [ "${{ parameters.configScope }}" = "all" ]; then
                   echo "Processing all datasets..."
                   # Extract all unique datasets from all collection config files
-                  datasets=$(cat dataflow/graph/etlJobConfig/graph-*-extract-config.json | jq -r '.[].jobKey' | sed 's/.*\.//' | sort -u)
+                  datasets=""
+                  for config_file in dataflow/graph/etlJobConfig/graph-*-extract-config.json; do
+                    file_datasets=$(cat "$config_file" | jq -r '.[].jobKey' | sed 's/.*\.//')
+                    datasets="$datasets $file_datasets"
+                  done
+                  datasets=$(echo "$datasets" | tr ' ' '\n' | sort -u)
                   for dataset in $datasets; do
                     update_config "$dataset"
                   done
