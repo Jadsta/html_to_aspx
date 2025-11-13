@@ -8,16 +8,23 @@ foreach ($job in $json) {
     if ($parts.Length -ge 3) {
         $key = $parts[1]
         if (-not $grouped.ContainsKey($key)) {
-            $grouped[$key] = New-Object System.Collections.ArrayList
+            $grouped[$key] = @()
         }
-        [void]$grouped[$key].Add($job)
+        $grouped[$key] += $job
     }
 }
 
-# Write each group to a separate file with consistent array formatting
+# Write each group to a separate file, always as a JSON array
 foreach ($key in $grouped.Keys) {
     $filename = "graph-$key-etlJobConfig.json"
-    $jsonArray = @($grouped[$key] | ForEach-Object { $_ })
-    $jsonArray | ConvertTo-Json -Depth 10 | Set-Content -Path $filename
+
+    # Build an array explicitly (handles single or multiple items)
+    $jsonArray = @()
+    $jsonArray += $grouped[$key]
+
+    $jsonText = $jsonArray | ConvertTo-Json -Depth 10
+    # Use Out-File to avoid encoding quirks
+    $jsonText | Out-File -FilePath $filename -Encoding utf8
+
     Write-Host "Created $filename"
 }
