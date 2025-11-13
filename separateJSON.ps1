@@ -1,5 +1,5 @@
 # Load and parse the JSON
-$json = Get-Content -Raw -Path "input.json" | ConvertFrom-Json
+$json = Get-Content -Raw -Path "etlJobConfig.json" | ConvertFrom-Json
 
 # Group by the second part of jobKey
 $grouped = @{}
@@ -18,12 +18,13 @@ foreach ($job in $json) {
 foreach ($key in $grouped.Keys) {
     $filename = "graph-$key-etlJobConfig.json"
 
-    # Build an array explicitly (handles single or multiple items)
-    $jsonArray = @()
-    $jsonArray += $grouped[$key]
+    # Force into an array even if only one item
+    $jsonArray = @($grouped[$key])
 
-    $jsonText = $jsonArray | ConvertTo-Json -Depth 10
-    # Use Out-File to avoid encoding quirks
+    # Convert to JSON with square brackets guaranteed
+    $jsonText = ConvertTo-Json $jsonArray -Depth 10
+
+    # Save to file
     $jsonText | Out-File -FilePath $filename -Encoding utf8
 
     Write-Host "Created $filename"
