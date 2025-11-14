@@ -133,9 +133,9 @@ steps:
           
           # Add SQL content and timestamp, remove protected fields if specified
           if [ -n "$protected_columns" ]; then
-            job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" ". + {tptSql: \$sql, updated: \$ts} | del($protected_columns)")
+            job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" --arg jk "$job_key" ". + {jobKey: \$jk, tptSql: \$sql, updated: \$ts} | del($protected_columns)")
           else
-            job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" '. + {tptSql: $sql, updated: $ts}')
+            job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" --arg jk "$job_key" '. + {jobKey: $jk, tptSql: $sql, updated: $ts}')
           fi
           
           # Override s3BucketName with pipeline variable if present
