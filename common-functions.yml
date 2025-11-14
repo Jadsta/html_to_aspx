@@ -41,15 +41,11 @@ steps:
         # Reusable function to find collection and jobKey for a dataset
         find_dataset_info() {
           local dataset_name=$1
-          local collection=""
-          local job_key=""
           
           for config_file in dataflow/graph/extract-config/graph-*-extract-config.json; do
             if cat "$config_file" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)' | grep -q .; then
-              collection=$(basename "$config_file" | sed 's/graph-\(.*\)-extract-config.json/\1/')
-              job_config=$(cat "dataflow/graph/extract-config/graph-$collection-extract-config.json" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
-              job_key=$(echo "$job_config" | jq -r '.jobKey')
-              echo "$collection|$job_key|$job_config"
+              job_config=$(cat "$config_file" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
+              echo "$job_config"
               return 0
             fi
           done
@@ -122,20 +118,20 @@ steps:
             return 1
           fi
           
-          collection=$(echo "$dataset_info" | cut -d'|' -f1)
-          job_key=$(echo "$dataset_info" | cut -d'|' -f2)
-          job_config=$(echo "$dataset_info" | cut -d'|' -f3-)
+          job_config="$dataset_info"
+          collection=$(echo "$job_config" | jq -r '.collection')
+          job_key=$(echo "$job_config" | jq -r '.jobKey')
           
-          echo "Processing config for jobKey: $job_key"
+          echo "Processing config for jobKey: $job_key (collection: $collection)"
           
           # Get current timestamp in ISO 8601 format
           current_timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           
           # Add SQL content and timestamp, remove protected fields if specified
           if [ -n "$protected_columns" ]; then
-            job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" --arg jk "$job_key" ". + {jobKey: \$jk, tptSql: \$sql, updated: \$ts} | del($protected_columns)")
+            job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" ". + {tptSql: \$sql, updated: \$ts} | del($protected_columns)")
           else
-            job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" --arg jk "$job_key" '. + {jobKey: $jk, tptSql: $sql, updated: $ts}')
+            job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" '. + {tptSql: $sql, updated: $ts}')
           fi
           
           # Override s3BucketName with pipeline variable if present
@@ -149,7 +145,7 @@ steps:
             --table-name ${{ parameters.etlConfigTable }} \
             --key "{\"jobKey\": {\"S\": \"$job_key\"}}" \
             --query 'Item' \
-            --output json 2>/dev/null || echo "null")
+            --output json 2>/dev/null)
           
           if [ "$operation_type" = "update" ]; then
             # UPDATE operation: Check if item exists, then use update-item
@@ -203,6 +199,7 @@ steps:
             dynamodb_item="{$dynamodb_attributes}"
             
             echo "DynamoDB item prepared for jobKey: $job_key"
+            echo "$dynamodb_item"
             
             # Insert/Overwrite the item in DynamoDB
             aws dynamodb put-item \
