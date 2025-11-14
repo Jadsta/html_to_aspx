@@ -164,8 +164,9 @@ ${{ if or(eq(parameters.action, 'InitialiseETLConfig'), eq(parameters.action, 'U
                   # Get current timestamp in AEST (UTC+10 or UTC+11 depending on DST)
                   current_timestamp=$(TZ='Australia/Sydney' date +"%Y-%m-%dT%H:%M:%S%z")
                   
-                  # Escape schema content for JSON
-                  escaped_schema=$(echo "$schema_content" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+                  # Escape schema content for JSON (including newlines and other control characters)
+                  escaped_schema=$(echo "$schema_content" | jq -Rs .)
+                  escaped_schema="${escaped_schema:1:-1}"  # Remove surrounding quotes added by jq
                   
                   # Build DynamoDB item with updated timestamp
                   dynamodb_item="{\"collection\":{\"S\":\"$collection\"},\"schema-map\":{\"S\":\"$escaped_schema\"},\"updated\":{\"S\":\"$current_timestamp\"}}"
