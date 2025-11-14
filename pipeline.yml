@@ -141,16 +141,6 @@ ${{ if or(eq(parameters.action, 'InitialiseETLConfig'), eq(parameters.action, 'U
                   local dataset_name=$1
                   echo "Deploying schema map for dataset: $dataset_name"
                   
-                  # Read schema map content
-                  schema_file="dataflow/graph/schema-maps/graph-$dataset_name.json"
-                  if [ ! -f "$schema_file" ]; then
-                    echo "Warning: Schema map file $schema_file not found for dataset $dataset_name"
-                    return 1
-                  fi
-                  
-                  schema_content=$(cat "$schema_file" | jq .)
-                  echo "Schema map loaded for dataset: $dataset_name"
-                  
                   # Find collection using shared function
                   dataset_info=$(find_dataset_info "$dataset_name")
                   if [ $? -ne 0 ]; then
@@ -160,6 +150,16 @@ ${{ if or(eq(parameters.action, 'InitialiseETLConfig'), eq(parameters.action, 'U
                   
                   collection=$(echo "$dataset_info" | jq -r '.collection')
                   echo "Found collection: $collection for dataset: $dataset_name"
+                  
+                  # Read schema map content using collection name
+                  schema_file="dataflow/graph/schema-maps/graph-$collection.json"
+                  if [ ! -f "$schema_file" ]; then
+                    echo "Warning: Schema map file $schema_file not found for collection $collection"
+                    return 1
+                  fi
+                  
+                  schema_content=$(cat "$schema_file" | jq .)
+                  echo "Schema map loaded for collection: $collection"
                   
                   # Get current timestamp in AEST (UTC+10 or UTC+11 depending on DST)
                   current_timestamp=$(TZ='Australia/Sydney' date +"%Y-%m-%dT%H:%M:%S%z")
