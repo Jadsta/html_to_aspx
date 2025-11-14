@@ -1,0 +1,204 @@
+parameters:
+  - name: awsenv
+    type: string
+  - name: configScope
+    type: string
+  - name: dataset
+    type: string
+  - name: bucketName
+    type: string
+  - name: etlConfigTable
+    type: string
+  - name: schemaMapTable
+    type: string
+  - name: operationType
+    type: string
+    default: 'initialise'  # 'initialise' or 'update'
+  - name: awsCredentials
+    type: string
+  - name: awsRegion
+    type: string
+
+steps:
+  - task: AmazonWebServices.aws-vsts-tools.AWSShellScript.AWSShellScript@1
+    displayName: '${{ parameters.taskName }}'
+    inputs:
+      awsCredentials: '${{ parameters.awsCredentials }}'
+      regionName: '${{ parameters.awsRegion }}'
+      scriptType: 'inline'
+      inlineScript: |
+        set -e  # Exit immediately if any command fails
+        set -o pipefail  # Catch errors in piped commands
+        
+        # Reusable function to find collection and jobKey for a dataset
+        find_dataset_info() {
+          local dataset_name=$1
+          local collection=""
+          local job_key=""
+          
+          for config_file in dataflow/graph/extract-config/graph-*-extract-config.json; do
+            if cat "$config_file" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)' | grep -q .; then
+              collection=$(basename "$config_file" | sed 's/graph-\(.*\)-extract-config.json/\1/')
+              job_config=$(cat "dataflow/graph/extract-config/graph-$collection-extract-config.json" | jq --arg dataset "$dataset_name" '.[] | select(.jobKey | split(".") | .[-1] == $dataset)')
+              job_key=$(echo "$job_config" | jq -r '.jobKey')
+              echo "$collection|$job_key|$job_config"
+              return 0
+            fi
+          done
+          return 1
+        }
+        
+        # Function to get list of datasets based on scope
+        get_datasets() {
+          if [ "${{ parameters.configScope }}" = "all" ]; then
+            datasets=""
+            for config_file in dataflow/graph/extract-config/graph-*-extract-config.json; do
+              file_datasets=$(cat "$config_file" | jq -r '.[].jobKey' | sed 's/.*\.//')
+              datasets="$datasets $file_datasets"
+            done
+            echo "$datasets" | tr ' ' '\n' | sort -u
+          else
+            echo "${{ parameters.dataset }}"
+          fi
+        }
+        
+        # Function to build DynamoDB attribute value from JSON config
+        build_dynamodb_attributes() {
+          local job_config_json=$1
+          local attributes=""
+          local first_item=true
+          
+          keys=$(echo "$job_config_json" | jq -r 'keys[]')
+          for key in $keys; do
+            value=$(echo "$job_config_json" | jq -r ".$key")
+            
+            if [ "$first_item" = true ]; then
+              first_item=false
+            else
+              attributes="$attributes,"
+            fi
+            
+            if echo "$value" | grep -E '^[0-9]+$' > /dev/null; then
+              attributes="$attributes\":$key\":{\"N\":\"$value\"}"
+            else
+              escaped_value=$(echo "$value" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\//\\\//g')
+              attributes="$attributes\":$key\":{\"S\":\"$escaped_value\"}"
+            fi
+          done
+          
+          echo "$attributes"
+        }
+        
+        # Function to process ETL config (handles both initialise and update)
+        process_etl_config() {
+          local dataset_name=$1
+          local operation_type="${{ parameters.operationType }}"
+          local protected_columns="${{ parameters.protectedColumns }}"
+          
+          echo "Processing dataset: $dataset_name (operation: $operation_type)"
+          
+          # Read SQL content
+          sql_file="data-extraction-sql/graph-$dataset_name.sql"
+          if [ ! -f "$sql_file" ]; then
+            echo "Warning: SQL file $sql_file not found for dataset $dataset_name"
+            sql_content=""
+          else
+            sql_content=$(cat "$sql_file" | tr '\n' ' ' | tr -d '\r' | tr -s ' ')
+            echo "SQL content loaded for dataset: $dataset_name"
+          fi
+          
+          # Find dataset info
+          dataset_info=$(find_dataset_info "$dataset_name")
+          if [ $? -ne 0 ]; then
+            echo "Error: Could not find dataset $dataset_name in any collection config file"
+            return 1
+          fi
+          
+          collection=$(echo "$dataset_info" | cut -d'|' -f1)
+          job_key=$(echo "$dataset_info" | cut -d'|' -f2)
+          job_config=$(echo "$dataset_info" | cut -d'|' -f3-)
+          
+          echo "Processing config for jobKey: $job_key"
+          
+          # Get current timestamp in ISO 8601 format
+          current_timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Add SQL content and timestamp, remove protected fields if specified
+          job_config_with_sql=$(echo "$job_config" | jq --arg sql "$sql_content" --arg ts "$current_timestamp" ". + {tptSql: \$sql, updated: \$ts} | del($protected_columns)")
+          
+          # Override s3BucketName with pipeline variable if present
+          if echo "$job_config_with_sql" | jq -e '.s3BucketName' > /dev/null; then
+            echo "Overriding s3BucketName with environment-specific bucket: ${{ parameters.bucketName }}"
+            job_config_with_sql=$(echo "$job_config_with_sql" | jq --arg bucket "${{ parameters.bucketName }}" '.s3BucketName = $bucket')
+          fi
+          
+          # Check if item exists in DynamoDB
+          existing_item=$(aws dynamodb get-item \
+            --table-name ${{ parameters.etlConfigTable }} \
+            --key "{\"jobKey\": {\"S\": \"$job_key\"}}" \
+            --query 'Item' \
+            --output json 2>/dev/null)
+          
+          if [ "$operation_type" = "update" ]; then
+            # UPDATE operation: Check if item exists, then use update-item
+            if [ "$existing_item" = "null" ] || [ -z "$existing_item" ]; then
+              echo "WARNING: Item with jobKey '$job_key' does not exist. Cannot update non-existing item."
+              return 1
+            fi
+            
+            # Build update expression and attribute values using shared function
+            update_expression=""
+            expression_attribute_names=""
+            
+            # Get attributes for non-jobKey fields
+            job_config_without_key=$(echo "$job_config_with_sql" | jq 'del(.jobKey)')
+            expression_attribute_values=$(build_dynamodb_attributes "$job_config_without_key")
+            
+            # Build update expression and attribute names
+            keys=$(echo "$job_config_without_key" | jq -r 'keys[]')
+            for key in $keys; do
+              if [ -z "$update_expression" ]; then
+                update_expression="SET #$key = :$key"
+              else
+                update_expression="$update_expression, #$key = :$key"
+              fi
+              
+              if [ -z "$expression_attribute_names" ]; then
+                expression_attribute_names="\"#$key\":\"$key\""
+              else
+                expression_attribute_names="$expression_attribute_names,\"#$key\":\"$key\""
+              fi
+            done
+            
+            # Execute update
+            aws dynamodb update-item \
+              --table-name ${{ parameters.etlConfigTable }} \
+              --key "{\"jobKey\": {\"S\": \"$job_key\"}}" \
+              --update-expression "$update_expression" \
+              --expression-attribute-names "{$expression_attribute_names}" \
+              --expression-attribute-values "{$expression_attribute_values}"
+            
+            echo "Successfully updated ETL job configuration for dataset: $dataset_name (preserved etlFromDate, lastRunTime, jobStatus)"
+          else
+            # INITIALISE operation: Check if item already exists
+            if [ "$existing_item" != "null" ] && [ -n "$existing_item" ]; then
+              echo "WARNING: Item with jobKey '$job_key' already exists. Skipping initialisation for dataset: $dataset_name"
+              return 0
+            fi
+            
+            # Item doesn't exist, proceed with put-item
+            dynamodb_attributes=$(build_dynamodb_attributes "$job_config_with_sql")
+            dynamodb_item="{$dynamodb_attributes}"
+            
+            echo "DynamoDB item prepared for jobKey: $job_key"
+            
+            # Insert/Overwrite the item in DynamoDB
+            aws dynamodb put-item \
+              --table-name ${{ parameters.etlConfigTable }} \
+              --item "$dynamodb_item"
+            
+            echo "Successfully initialised ETL job configuration for dataset: $dataset_name"
+          fi
+        }
+        
+        ${{ parameters.customScript }}
