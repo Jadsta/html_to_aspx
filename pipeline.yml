@@ -151,21 +151,21 @@ ${{ if or(eq(parameters.action, 'InitialiseETLConfig'), eq(parameters.action, 'U
                   schema_content=$(cat "$schema_file" | jq -c .)
                   echo "Schema map loaded for dataset: $dataset_name"
                   
-                  # Find jobKey using shared function
+                  # Find collection using shared function
                   dataset_info=$(find_dataset_info "$dataset_name")
                   if [ $? -ne 0 ]; then
-                    echo "Error: Could not find jobKey for dataset $dataset_name"
+                    echo "Error: Could not find collection for dataset $dataset_name"
                     return 1
                   fi
                   
-                  job_key=$(echo "$dataset_info" | cut -d'|' -f2)
-                  echo "Found jobKey: $job_key for dataset: $dataset_name"
+                  collection=$(echo "$dataset_info" | jq -r '.collection')
+                  echo "Found collection: $collection for dataset: $dataset_name"
                   
                   # Escape schema content for JSON
                   escaped_schema=$(echo "$schema_content" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
                   
                   # Build DynamoDB item
-                  dynamodb_item="{\"collection\":{\"S\":\"$job_key\"},\"schema-map\":{\"S\":\"$escaped_schema\"}}"
+                  dynamodb_item="{\"collection\":{\"S\":\"$collection\"},\"schema-map\":{\"S\":\"$escaped_schema\"}}"
                   
                   echo "DynamoDB item prepared for collection: $job_key"
                   
