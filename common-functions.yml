@@ -149,7 +149,7 @@ steps:
             --table-name ${{ parameters.etlConfigTable }} \
             --key "{\"jobKey\": {\"S\": \"$job_key\"}}" \
             --query 'Item' \
-            --output json 2>/dev/null)
+            --output json 2>/dev/null || echo "null")
           
           if [ "$operation_type" = "update" ]; then
             # UPDATE operation: Check if item exists, then use update-item
