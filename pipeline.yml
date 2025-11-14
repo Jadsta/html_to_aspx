@@ -49,10 +49,10 @@ variables:
     value: 'your-dynamodb-table'
   - name: schemaMapTable
     value: 'your-schema-map-table'
-  - name: awsCredentials
+  - name: awsCred
     value: '${{ parameters.awsenv }}-aws-service-connection'
-  - name: awsRegion
-    value: 'us-east-1'
+  - name: region
+    value: ''
   - name: protectedColumns
     value: '.etlFromDate, .lastRunTime, .jobStatus'
 
@@ -71,8 +71,8 @@ ${{ if eq(parameters.action, 'InitialiseETLConfig') }}
               bucketName: ${{ variables.bucketName }}
               etlConfigTable: ${{ variables.etlConfigTable }}
               schemaMapTable: ${{ variables.schemaMapTable }}
-              awsCredentials: ${{ variables.awsCredentials }}
-              awsRegion: ${{ variables.awsRegion }}
+              awsCred: ${{ variables.awsCred }}
+              region: ${{ variables.region }}
               protectedColumns: ''
               operationType: 'initialise'
               customScript: |
@@ -101,8 +101,8 @@ ${{ if eq(parameters.action, 'UpdateETLConfig') }}
               bucketName: ${{ variables.bucketName }}
               etlConfigTable: ${{ variables.etlConfigTable }}
               schemaMapTable: ${{ variables.schemaMapTable }}
-              awsCredentials: ${{ variables.awsCredentials }}
-              awsRegion: ${{ variables.awsRegion }}
+              awsCred: ${{ variables.awsCred }}
+              region: ${{ variables.region }}
               protectedColumns: ${{ variables.protectedColumns }}
               operationType: 'update'
               customScript: |
@@ -131,8 +131,8 @@ ${{ if or(eq(parameters.action, 'InitialiseETLConfig'), eq(parameters.action, 'U
               bucketName: ${{ variables.bucketName }}
               etlConfigTable: ${{ variables.etlConfigTable }}
               schemaMapTable: ${{ variables.schemaMapTable }}
-              awsCredentials: ${{ variables.awsCredentials }}
-              awsRegion: ${{ variables.awsRegion }}
+              awsCred: ${{ variables.awsCred }}
+              region: ${{ variables.region }}
               customScript: |
                 echo "Deploying Schema Maps - Scope: ${{ parameters.configScope }}"
                 
