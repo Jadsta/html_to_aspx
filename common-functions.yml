@@ -83,10 +83,10 @@ steps:
             fi
             
             if echo "$value" | grep -E '^[0-9]+$' > /dev/null; then
-              attributes="$attributes\":$key\":{\"N\":\"$value\"}"
+              attributes="$attributes\"$key\":{\"N\":\"$value\"}"
             else
               escaped_value=$(echo "$value" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\//\\\//g')
-              attributes="$attributes\":$key\":{\"S\":\"$escaped_value\"}"
+              attributes="$attributes\"$key\":{\"S\":\"$escaped_value\"}"
             fi
           done
           
@@ -158,9 +158,11 @@ steps:
             update_expression=""
             expression_attribute_names=""
             
-            # Get attributes for non-jobKey fields
+            # Get attributes for non-jobKey fields (with : prefix for update-item)
             job_config_without_key=$(echo "$job_config_with_sql" | jq 'del(.jobKey)')
-            expression_attribute_values=$(build_dynamodb_attributes "$job_config_without_key")
+            temp_attributes=$(build_dynamodb_attributes "$job_config_without_key")
+            # Add : prefix to keys for expression attribute values
+            expression_attribute_values=$(echo "{$temp_attributes}" | sed 's/"/":/g' | sed 's/::/:/')
             
             # Build update expression and attribute names
             keys=$(echo "$job_config_without_key" | jq -r 'keys[]')
