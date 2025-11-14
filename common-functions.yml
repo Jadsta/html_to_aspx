@@ -1,4 +1,6 @@
 parameters:
+  - name: taskName
+    type: string
   - name: awsenv
     type: string
   - name: configScope
@@ -14,17 +16,23 @@ parameters:
   - name: operationType
     type: string
     default: 'initialise'  # 'initialise' or 'update'
-  - name: awsCredentials
+  - name: protectedColumns
     type: string
-  - name: awsRegion
+    default: ''
+  - name: awsCred
     type: string
+  - name: region
+    type: string
+  - name: customScript
+    type: string
+    default: ''
 
 steps:
   - task: AmazonWebServices.aws-vsts-tools.AWSShellScript.AWSShellScript@1
     displayName: '${{ parameters.taskName }}'
     inputs:
-      awsCredentials: '${{ parameters.awsCredentials }}'
-      regionName: '${{ parameters.awsRegion }}'
+      awsCredentials: '${{ parameters.awsCred }}'
+      regionName: '${{ parameters.region }}'
       scriptType: 'inline'
       inlineScript: |
         set -e  # Exit immediately if any command fails
