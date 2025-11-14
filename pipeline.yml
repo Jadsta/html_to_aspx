@@ -181,12 +181,41 @@ ${{ if or(eq(parameters.action, 'InitialiseETLConfig'), eq(parameters.action, 'U
                   echo "Successfully deployed schema map for dataset: $dataset_name"
                 }
                 
-                # Process datasets (use schema-maps directory for 'all' scope)
+                # Process datasets - deploy unique schema maps per collection
                 if [ "${{ parameters.configScope }}" = "all" ]; then
-                  echo "Processing all datasets..."
-                  datasets=$(ls dataflow/graph/schema-maps/graph-*.json | sed 's/.*graph-\(.*\)\.json/\1/')
-                  for dataset in $datasets; do
-                    deploy_schema_map "$dataset"
+                  echo "Processing all collections..."
+                  # Get unique collections from schema map files
+                  collections=$(ls dataflow/graph/schema-maps/graph-*.json | sed 's/.*graph-\(.*\)\.json/\1/' | sort -u)
+                  
+                  for collection in $collections; do
+                    echo "Deploying schema map for collection: $collection"
+                    
+                    # Read schema map content using collection name
+                    schema_file="dataflow/graph/schema-maps/graph-$collection.json"
+                    if [ ! -f "$schema_file" ]; then
+                      echo "Warning: Schema map file $schema_file not found for collection $collection"
+                      continue
+                    fi
+                    
+                    schema_content=$(cat "$schema_file" | jq .)
+                    echo "Schema map loaded for collection: $collection"
+                    
+                    # Get current timestamp in AEST
+                    current_timestamp=$(TZ='Australia/Sydney' date +"%Y-%m-%dT%H:%M:%S%z")
+                    
+                    # Escape schema content for JSON
+                    escaped_schema=$(echo "$schema_content" | jq -Rs .)
+                    escaped_schema="${escaped_schema:1:-1}"
+                    
+                    # Build DynamoDB item
+                    dynamodb_item="{\"collection\":{\"S\":\"$collection\"},\"schema-map\":{\"S\":\"$escaped_schema\"},\"updated\":{\"S\":\"$current_timestamp\"}}"
+                    
+                    # Insert/Overwrite the item in DynamoDB
+                    aws dynamodb put-item \
+                      --table-name ${{ variables.schemaMapTable }} \
+                      --item "$dynamodb_item"
+                    
+                    echo "Successfully deployed schema map for collection: $collection"
                   done
                 else
                   echo "Processing specific dataset: ${{ parameters.dataset }}"
